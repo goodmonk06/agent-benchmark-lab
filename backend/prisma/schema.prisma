@@ -10,19 +10,96 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Organization for multi-tenancy
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  settings    Json     @default("{}")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  suites      TaskSuite[]
+  agents      AgentProfile[]
+  runs        BenchmarkRun[]
+  webhooks    Webhook[]
+
+  @@map("organizations")
+}
+
+// User model for authentication and authorization
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String?
+  role           String   @default("member") // admin, member, viewer
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  metadata       Json     @default("{}")
+  lastLoginAt    DateTime?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  createdSuites  TaskSuite[]
+  createdAgents  AgentProfile[]
+  createdRuns    BenchmarkRun[]
+  comments       Comment[]
+
+  @@map("users")
+  @@index([organizationId])
+  @@index([email])
+}
+
+// Tag for flexible categorization
+model Tag {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#3B82F6")
+  createdAt DateTime @default(now())
+
+  suites    TaskSuite[]
+  agents    AgentProfile[]
+  runs      BenchmarkRun[]
+
+  @@map("tags")
+  @@unique([name])
+}
+
 // Task suite represents a collection of related benchmark tasks
 model TaskSuite {
-  id          String     @id @default(cuid())
-  name        String
-  description String?
-  domain      String     // code, writing, planning, qa, etc.
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id             String        @id @default(cuid())
+  name           String
+  description    String?
+  domain         String        // code, writing, planning, qa, etc.
 
-  tasks       TaskItem[]
-  runs        BenchmarkRun[]
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  createdById    String?
+  createdBy      User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  visibility     String        @default("private") // public, private, organization
+  isTemplate     Boolean       @default(false)
+  metadata       Json          @default("{}")
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  tasks          TaskItem[]
+  runs           BenchmarkRun[]
+  tags           Tag[]
+  comments       Comment[]
 
   @@map("task_suites")
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([domain])
+  @@index([isTemplate])
 }
 
 // Individual task within a suite
@@ -33,9 +110,16 @@ model TaskItem {
 
   name              String?
   description       String?
+  difficulty        String   @default("medium") // easy, medium, hard
+  category          String?  // For sub-categorization within suites
+  version           Int      @default(1)
+
   inputJson         Json     // The input/prompt for the task
   expectedJson      Json?    // Optional expected output for scoring
   scoringConfigJson Json?    // Configuration for how to score this task
+
+  metadata          Json     @default("{}")
+  order             Int      @default(0) // For custom ordering
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -44,42 +128,96 @@ model TaskItem {
 
   @@map("task_items")
   @@index([suiteId])
+  @@index([difficulty])
 }
 
 // Agent configuration/profile
 model AgentProfile {
-  id           String   @id @default(cuid())
-  name         String
-  description  String?
-  model        String   // e.g., "gpt-4", "claude-3-opus-20240229"
-  provider     String   // "openai" or "anthropic"
-  systemPrompt String   @db.Text
-  toolsJson    Json     // JSON array of tool names/configs
+  id             String        @id @default(cuid())
+  name           String
+  description    String?
+  model          String        // e.g., "gpt-4", "claude-3-opus-20240229"
+  provider       String        // "openai" or "anthropic"
+  systemPrompt   String        @db.Text
+  toolsJson      Json          // JSON array of tool names/configs
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
-  runAgents    BenchmarkRunAgent[]
+  createdById    String?
+  createdBy      User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  // Advanced configuration
+  temperature    Float?
+  maxTokens      Int?
+  timeout        Int?          @default(60000) // milliseconds
+  retryPolicy    Json?         // Retry configuration
+  costConfig     Json?         // Cost per token configuration
+  metadata       Json          @default("{}")
+
+  isActive       Boolean       @default(true)
+  isTemplate     Boolean       @default(false)
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  runAgents      BenchmarkRunAgent[]
+  tags           Tag[]
+  templates      RunTemplate[]
 
   @@map("agent_profiles")
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([provider])
+  @@index([isActive])
 }
 
 // A benchmark run (can test multiple agents)
 model BenchmarkRun {
-  id        String   @id @default(cuid())
-  suiteId   String
-  suite     TaskSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  id             String        @id @default(cuid())
+  suiteId        String
+  suite          TaskSuite     @relation(fields: [suiteId], references: [id], onDelete: Cascade)
 
-  name      String?
-  status    String   @default("pending") // pending, running, completed, failed
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdById    String?
+  createdBy      User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
-  agents    BenchmarkRunAgent[]
+  name           String?
+  status         String        @default("pending") // pending, running, completed, failed, cancelled
+  priority       String        @default("normal") // low, normal, high, urgent
+
+  // Scheduling and automation
+  scheduledRunId String?       @unique
+  scheduledRun   ScheduledRun? @relation(fields: [scheduledRunId], references: [id], onDelete: SetNull)
+
+  // Comparison and analysis
+  compareToRunId String?
+  compareToRun   BenchmarkRun? @relation("RunComparisons", fields: [compareToRunId], references: [id], onDelete: SetNull)
+  comparedByRuns BenchmarkRun[] @relation("RunComparisons")
+
+  // Configuration
+  notifyOnComplete Boolean      @default(false)
+  webhookIds       String[]     @default([])
+  metadata         Json         @default("{}")
+
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  agents           BenchmarkRunAgent[]
+  tags             Tag[]
+  comments         Comment[]
+  costTracking     CostTracking?
 
   @@map("benchmark_runs")
   @@index([suiteId])
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([status])
+  @@index([scheduledRunId])
 }
 
 // Junction table for run × agent with aggregated metrics
@@ -118,8 +256,23 @@ model BenchmarkResult {
   scoreJson    Json?    // Scores/metrics for this result
   errorMessage String?  @db.Text
 
-  durationMs   Int?     // Time taken to complete
-  tokensUsed   Int?     // Tokens consumed (if available)
+  // Detailed timing breakdown
+  durationMs          Int?     // Total time taken
+  llmCallDurationMs   Int?     // Time spent in LLM call
+  scoringDurationMs   Int?     // Time spent scoring
+
+  // Token usage
+  tokensUsed       Int?
+  promptTokens     Int?
+  completionTokens Int?
+
+  // Cost tracking
+  estimatedCost    Float?   // Cost in USD
+
+  // Additional metadata
+  retryCount       Int      @default(0)
+  intermediateOutputs Json? // For multi-step tasks
+  metadata         Json     @default("{}")
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -128,4 +281,154 @@ model BenchmarkResult {
   @@index([runAgentId])
   @@index([taskItemId])
   @@unique([runAgentId, taskItemId])
+}
+
+// Run template for reusable configurations
+model RunTemplate {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+
+  suiteId        String?
+  agentProfileIds String[]
+
+  configuration  Json     @default("{}") // Stores run config
+  isPublic       Boolean  @default(false)
+
+  usageCount     Int      @default(0)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  agentProfiles  AgentProfile[]
+
+  @@map("run_templates")
+  @@index([suiteId])
+}
+
+// Scheduled/recurring benchmark runs
+model ScheduledRun {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+
+  suiteId        String
+  agentProfileIds String[]
+
+  schedule       String   // Cron expression
+  timezone       String   @default("UTC")
+
+  isActive       Boolean  @default(true)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+
+  configuration  Json     @default("{}")
+  metadata       Json     @default("{}")
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  runs           BenchmarkRun[]
+
+  @@map("scheduled_runs")
+  @@index([suiteId])
+  @@index([isActive])
+  @@index([nextRunAt])
+}
+
+// Webhooks for external integrations
+model Webhook {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name           String
+  url            String
+  events         String[] // Array of event types to listen to
+  secret         String?  // For webhook signature verification
+  headers        Json     @default("{}")
+
+  isActive       Boolean  @default(true)
+  lastTriggeredAt DateTime?
+  failureCount   Int      @default(0)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  deliveries     WebhookDelivery[]
+
+  @@map("webhooks")
+  @@index([organizationId])
+  @@index([isActive])
+}
+
+// Webhook delivery log
+model WebhookDelivery {
+  id         String   @id @default(cuid())
+  webhookId  String
+  webhook    Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  event      String
+  payload    Json
+
+  status     String   // pending, success, failed
+  statusCode Int?
+  response   String?  @db.Text
+  error      String?  @db.Text
+
+  attempts   Int      @default(1)
+
+  createdAt  DateTime @default(now())
+
+  @@map("webhook_deliveries")
+  @@index([webhookId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Comments for collaboration
+model Comment {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Polymorphic relation - can comment on different entities
+  suiteId   String?
+  suite     TaskSuite? @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+
+  runId     String?
+  run       BenchmarkRun? @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  metadata  Json     @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("comments")
+  @@index([userId])
+  @@index([suiteId])
+  @@index([runId])
+}
+
+// Cost tracking for benchmark runs
+model CostTracking {
+  id                String   @id @default(cuid())
+  runId             String   @unique
+  run               BenchmarkRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  totalCost         Float    @default(0)
+  totalTokens       Int      @default(0)
+  totalPromptTokens Int      @default(0)
+  totalCompletionTokens Int  @default(0)
+
+  costByProvider    Json     @default("{}")
+  costByAgent       Json     @default("{}")
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("cost_tracking")
+  @@index([runId])
 }
