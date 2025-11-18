@@ -1,69 +1,143 @@
 # Agent Benchmark Lab
 
-A comprehensive platform for benchmarking and comparing different AI agent configurations. Test various models, system prompts, and tool configurations across standardized task suites.
+A comprehensive platform for benchmarking and comparing different AI agent configurations across standardized task suites.
 
-## Features
+## Overview
 
-- **Task Suites**: Create collections of benchmark tasks organized by domain (code, writing, planning, QA, reasoning)
-- **Agent Profiles**: Configure different agent setups with various models (OpenAI/Anthropic), system prompts, and tools
-- **Benchmark Runs**: Execute benchmarks across multiple agents and tasks with automated scoring
-- **Multiple Scoring Methods**: Exact match, similarity scoring, and LLM-as-judge evaluation
-- **Matrix View**: Visualize results in an agents × tasks matrix for easy comparison
-- **Detailed Metrics**: Track performance with scores, duration, token usage, and success rates
+Agent Benchmark Lab enables you to systematically evaluate and compare AI agents with different configurations (models, system prompts, tools) across various domains. Run controlled experiments to understand which agent configurations work best for specific task types.
 
-## Architecture
+**Key capabilities:**
+- Create task suites organized by domain (code, writing, planning, QA, reasoning)
+- Configure agent profiles with different LLM providers, models, and prompts
+- Execute benchmarks and automatically score results
+- Visualize performance in agent × task matrices
+- Track detailed metrics: accuracy, speed, token usage
+
+## Tech Stack
+
+**Backend:**
+- **Runtime**: Node.js 20+ with TypeScript
+- **Framework**: Fastify 4.x
+- **Database**: PostgreSQL 16+ with Prisma ORM
+- **LLM Integration**: OpenAI API, Anthropic API
+- **Validation**: Zod
+- **Testing**: Vitest
+
+**Frontend:**
+- **Framework**: Next.js 14 (App Router)
+- **UI**: React 18 with TypeScript
+- **Styling**: Tailwind CSS
+- **Testing**: Vitest + React Testing Library
+
+**Infrastructure:**
+- Docker & Docker Compose
+- Monorepo with npm workspaces
+
+## Domain Model
+
+The system revolves around these core entities:
 
 ```
-agent-benchmark-lab/
-├── backend/          # Fastify + TypeScript + Prisma
-│   ├── prisma/       # Database schema
-│   └── src/
-│       ├── routes/   # API endpoints
-│       ├── services/ # LLM integration & scoring
-│       └── types/    # TypeScript definitions
-├── frontend/         # Next.js dashboard
-│   └── src/
-│       ├── app/      # Pages (suites, agents, runs)
-│       └── lib/      # API client
-└── README.md
+TaskSuite (1) ──→ (N) TaskItem
+    ↓
+BenchmarkRun ──→ BenchmarkRunAgent ──→ BenchmarkResult
+                        ↓
+                   AgentProfile
 ```
 
-## Prerequisites
+**TaskSuite**: A collection of related benchmark tasks (e.g., "Code Assistant Benchmark")
 
-- Node.js 18+
-- PostgreSQL 14+
-- OpenAI API key (optional)
-- Anthropic API key (optional)
+**TaskItem**: Individual tasks with input prompts and optional expected outputs
 
-## Setup
+**AgentProfile**: Configuration for an agent (provider, model, system prompt, tools)
 
-### 1. Clone and Install
+**BenchmarkRun**: An execution that tests multiple agents against a task suite
+
+**BenchmarkRunAgent**: Tracks results for one agent in a run (with aggregate metrics)
+
+**BenchmarkResult**: Individual result for one agent on one task (scores, timing, output)
+
+## Getting Started
+
+### Requirements
+
+- Node.js 20+
+- Docker & Docker Compose
+- PostgreSQL 16+ (or use Docker)
+- OpenAI API key (optional, for testing OpenAI models)
+- Anthropic API key (optional, for testing Claude models)
+
+### Quick Start with Docker
+
+1. **Clone and setup environment**
 
 ```bash
 git clone <repository-url>
 cd agent-benchmark-lab
+
+# Copy and configure environment
+cp .env.example .env
+# Edit .env and add your API keys
+```
+
+2. **Start all services with Docker**
+
+```bash
+docker compose up -d
+```
+
+This starts:
+- PostgreSQL database on port 5432
+- Backend API on port 3001
+- Frontend dashboard on port 3000
+
+3. **Run migrations and seed data**
+
+```bash
+# Run database migrations
+docker compose exec backend npx prisma migrate deploy
+
+# Seed demo data
+docker compose exec backend npm run db:seed
+```
+
+4. **Access the application**
+
+Open http://localhost:3000 in your browser.
+
+### Local Development Setup
+
+For development without Docker:
+
+1. **Install dependencies**
+
+```bash
 npm install
 ```
 
-### 2. Configure Backend
+2. **Setup PostgreSQL**
+
+Make sure PostgreSQL is running locally, then create a database:
 
 ```bash
-cd backend
+createdb agent_benchmark
+```
+
+3. **Configure environment**
+
+```bash
 cp .env.example .env
 ```
 
-Edit `backend/.env`:
+Edit `.env`:
 
 ```env
-DATABASE_URL="postgresql://user:password@localhost:5432/agent_benchmark?schema=public"
-PORT=3001
-
-# LLM API Keys
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/agent_benchmark?schema=public
+OPENAI_API_KEY=sk-your-key-here
+ANTHROPIC_API_KEY=sk-ant-your-key-here
 ```
 
-### 3. Setup Database
+4. **Setup database**
 
 ```bash
 # Generate Prisma client
@@ -72,261 +146,155 @@ npm run db:generate
 # Run migrations
 npm run db:migrate
 
-# Or push schema directly (for development)
-npm run db:push
+# Seed demo data
+npm run db:seed
 ```
 
-### 4. Configure Frontend
+5. **Start development servers**
 
 ```bash
-cd ../frontend
-cp .env.example .env.local
-```
-
-Edit `frontend/.env.local`:
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:3001/api
-```
-
-### 5. Start Development Servers
-
-```bash
-# From root directory
+# Start both backend and frontend
 npm run dev
 
 # Or start individually:
-# Terminal 1 - Backend
-cd backend && npm run dev
-
-# Terminal 2 - Frontend
-cd frontend && npm run dev
+npm run dev:backend  # Backend on :3001
+npm run dev:frontend # Frontend on :3000
 ```
 
-The application will be available at:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:3001
+### Available Scripts
 
-## Usage Guide
+From the root directory:
 
-### 1. Create a Task Suite
+```bash
+npm run dev          # Start both backend and frontend
+npm run build        # Build all workspaces
+npm run test         # Run all tests
+npm run lint         # Lint all workspaces
 
-Navigate to **Task Suites** → **Create Suite**
-
-Example: Code Assistant Suite
-
-```json
-{
-  "name": "Code Assistant Benchmark",
-  "description": "Evaluate code generation and debugging capabilities",
-  "domain": "code"
-}
+# Database operations
+npm run db:generate  # Generate Prisma client
+npm run db:migrate   # Run migrations
+npm run db:push      # Push schema (dev only)
+npm run db:seed      # Seed demo data
+npm run db:studio    # Open Prisma Studio
 ```
 
-### 2. Add Tasks to Suite
+## Example Flow: Code Assistant Benchmark
 
-Click on your suite → **Add Task**
+This repository includes a complete vertical slice demonstrating the benchmark workflow.
 
-**Example Task 1: Hello World**
+### 1. View Demo Task Suite
 
-```json
-{
-  "name": "Generate Hello World",
-  "description": "Generate a simple hello world program in Python",
-  "inputJson": {
-    "prompt": "Write a Python function that prints 'Hello, World!'"
-  },
-  "expectedJson": "def hello_world():\n    print('Hello, World!')"
-}
-```
+After seeding, navigate to **Task Suites** → **Code Assistant Benchmark**
 
-**Example Task 2: Fibonacci**
+You'll see 5 pre-configured tasks:
+- Hello World Function
+- Fibonacci Calculator
+- Bug Fix Challenge
+- List Comprehension
+- Error Handling
 
-```json
-{
-  "name": "Fibonacci Function",
-  "inputJson": {
-    "prompt": "Write a Python function to calculate the nth Fibonacci number using recursion"
-  },
-  "expectedJson": "def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)"
-}
-```
+Each task has:
+- Input prompt (what the agent receives)
+- Expected output (optional, for scoring)
+- Scoring configuration
 
-**Example Task 3: Bug Fix**
+### 2. Explore Agent Profiles
 
-```json
-{
-  "name": "Debug Loop",
-  "inputJson": {
-    "prompt": "Fix this buggy code:\n\ndef sum_list(numbers):\n    total = 0\n    for i in range(len(numbers)):\n        total += numbers[i+1]\n    return total"
-  },
-  "expectedJson": "def sum_list(numbers):\n    total = 0\n    for i in range(len(numbers)):\n        total += numbers[i]\n    return total"
-}
-```
+Navigate to **Agents** to see demo profiles:
+- **GPT-4 Code Expert**: Detailed code-focused system prompt
+- **Claude 3 Sonnet Helper**: Concise, practical instructions
+- **GPT-3.5 Turbo Baseline**: Simple baseline configuration
+- **Technical Writer GPT-4**: Optimized for documentation
 
-### 3. Create Agent Profiles
-
-Navigate to **Agents** → **Create Agent**
-
-**Example Agent 1: GPT-4 Code Expert**
-
-```json
-{
-  "name": "GPT-4 Code Expert",
-  "description": "GPT-4 with detailed code-focused system prompt",
-  "provider": "openai",
-  "model": "gpt-4",
-  "systemPrompt": "You are an expert software engineer. Write clean, efficient, and well-documented code. Always include proper error handling and follow best practices.",
-  "toolsJson": []
-}
-```
-
-**Example Agent 2: Claude Sonnet Helper**
-
-```json
-{
-  "name": "Claude 3 Sonnet Helper",
-  "description": "Claude 3 Sonnet with concise instructions",
-  "provider": "anthropic",
-  "model": "claude-3-sonnet-20240229",
-  "systemPrompt": "You are a helpful coding assistant. Provide clear, working code examples.",
-  "toolsJson": []
-}
-```
-
-**Example Agent 3: GPT-3.5 Baseline**
-
-```json
-{
-  "name": "GPT-3.5 Turbo Baseline",
-  "description": "Baseline comparison with GPT-3.5",
-  "provider": "openai",
-  "model": "gpt-3.5-turbo",
-  "systemPrompt": "You are a helpful assistant that writes code.",
-  "toolsJson": []
-}
-```
-
-### 4. Run Benchmark
+### 3. Create a Benchmark Run
 
 Navigate to **Benchmark Runs** → **Create Run**
 
-1. Select your task suite
-2. Select agents to benchmark (can select multiple)
-3. Click **Create & Start Run**
+1. Select "Code Assistant Benchmark" suite
+2. Select multiple agents to compare (e.g., GPT-4 vs GPT-3.5)
+3. Click "Create & Start Run"
 
-The benchmark will execute asynchronously. Results will update automatically.
+The system will:
+- Execute each task with each agent
+- Call the respective LLM APIs
+- Score outputs using configured methods
+- Calculate aggregate metrics
 
-### 5. View Results
+### 4. View Results
 
-Click on a run to see:
-- **Summary Cards**: Aggregate metrics per agent
-- **Results Matrix**: Visual comparison (agents × tasks)
-- **Detailed Results**: Full scores, timing, and error details
+Click on your run to see:
 
-## Example Use Cases
+**Summary Cards**: Aggregate metrics per agent
+- Average score
+- Success/failure counts
+- Average duration
+- Total tokens used
 
-### Use Case 1: Code Assistant Comparison
+**Results Matrix**: Visual comparison grid (agents × tasks)
+- Color-coded scores (green = high, red = low)
+- Duration per task
+- Quick identification of strengths/weaknesses
 
-Compare different models for code generation tasks:
+**Detailed Results**: Expandable per-agent, per-task breakdown
+- Full score details
+- Error messages if any
+- Token usage per task
 
-**Task Suite**: Code Assistant Benchmark
-- Generate functions (basic, intermediate, advanced)
-- Debug code
-- Explain code
-- Optimize algorithms
+### 5. Iterate and Improve
 
-**Agents to Test**:
-- GPT-4 with detailed system prompt
-- Claude 3 Opus with code focus
-- GPT-3.5 as baseline
-- Claude 3 Haiku for speed comparison
+Based on results:
+- Modify agent system prompts
+- Add more tasks to suites
+- Create new agent configurations
+- Run comparative benchmarks
 
-**Expected Insights**:
-- Which model produces most accurate code?
-- Which is fastest?
-- Token usage comparison
-- Success rate on complex vs. simple tasks
+## API Endpoints
 
-### Use Case 2: Product Spec Writer
+### Task Suites
 
-Benchmark agents for technical writing:
-
-**Task Suite**: Product Spec Writing
-- Write feature specifications
-- Create user stories
-- Draft API documentation
-- Generate test plans
-
-**Sample Task**:
-
-```json
-{
-  "name": "User Authentication Spec",
-  "inputJson": {
-    "prompt": "Write a detailed product specification for a user authentication system including: user registration, login, password reset, and session management. Include security considerations and API endpoints."
-  },
-  "scoringConfigJson": {
-    "useLLMJudge": true
-  }
-}
+```
+GET    /api/suites          # List all suites
+GET    /api/suites/:id      # Get suite with tasks
+POST   /api/suites          # Create suite
+PUT    /api/suites/:id      # Update suite
+DELETE /api/suites/:id      # Delete suite
 ```
 
-**Agents to Test**:
-- GPT-4 with technical writer persona
-- Claude 3 Opus with structured output focus
-- Different system prompts for same model
+### Task Items
 
-### Use Case 3: Planning Agent
-
-Test agents for task planning and breakdown:
-
-**Task Suite**: Task Planning Benchmark
-- Project planning
-- Breaking down complex tasks
-- Resource estimation
-- Risk identification
-
-**Sample Task**:
-
-```json
-{
-  "name": "E-commerce Migration Plan",
-  "inputJson": {
-    "prompt": "Create a detailed plan to migrate an existing e-commerce platform from monolith to microservices. Include phases, team requirements, risks, and timeline."
-  },
-  "scoringConfigJson": {
-    "useLLMJudge": true
-  }
-}
+```
+POST   /api/tasks           # Create task
+PUT    /api/tasks/:id       # Update task
+DELETE /api/tasks/:id       # Delete task
 ```
 
-### Use Case 4: QA Test Generation
+### Agent Profiles
 
-Benchmark agents for test case generation:
+```
+GET    /api/agents          # List all agents
+GET    /api/agents/:id      # Get agent details
+POST   /api/agents          # Create agent
+PUT    /api/agents/:id      # Update agent
+DELETE /api/agents/:id      # Delete agent
+```
 
-**Task Suite**: QA Test Generation
-- Unit test generation
-- Integration test scenarios
-- Edge case identification
-- Test data generation
+### Benchmark Runs
 
-**Sample Task**:
-
-```json
-{
-  "name": "Shopping Cart Tests",
-  "inputJson": {
-    "prompt": "Generate comprehensive test cases for an e-commerce shopping cart including: adding items, removing items, updating quantities, applying discounts, and checkout."
-  }
-}
+```
+GET    /api/runs            # List all runs
+GET    /api/runs/:id        # Get run with full results
+POST   /api/runs            # Create and start run
+GET    /api/runs/:id/matrix # Get results matrix
+GET    /api/runs/:id/status # Get run status
+DELETE /api/runs/:id        # Delete run
 ```
 
 ## Scoring Methods
 
 ### 1. Exact Match
 
-Compares output exactly with expected result (after normalization).
+Compares output exactly with expected result after normalization (trimming, etc).
 
 ```json
 {
@@ -336,7 +304,7 @@ Compares output exactly with expected result (after normalization).
 
 ### 2. Similarity Score
 
-Calculates Jaccard similarity between output and expected (0-1).
+Calculates Jaccard similarity between output and expected (0-1 scale).
 
 ```json
 {
@@ -344,11 +312,9 @@ Calculates Jaccard similarity between output and expected (0-1).
 }
 ```
 
-### 3. LLM-as-Judge
+### 3. LLM-as-Judge (Optional)
 
-Uses GPT-4 to evaluate output quality (0-100).
-
-Enable in task:
+Uses an LLM to evaluate output quality on a 0-100 scale. Enable in task:
 
 ```json
 {
@@ -358,193 +324,172 @@ Enable in task:
 }
 ```
 
-Result:
+## Testing
 
-```json
-{
-  "llmJudgeScore": 92,
-  "llmJudgeReasoning": "The code is correct, well-structured, and includes proper error handling."
-}
-```
-
-## API Reference
-
-### Task Suites
-
-- `GET /api/suites` - List all suites
-- `GET /api/suites/:id` - Get suite with tasks
-- `POST /api/suites` - Create suite
-- `PUT /api/suites/:id` - Update suite
-- `DELETE /api/suites/:id` - Delete suite
-
-### Task Items
-
-- `POST /api/tasks` - Create task
-- `PUT /api/tasks/:id` - Update task
-- `DELETE /api/tasks/:id` - Delete task
-
-### Agent Profiles
-
-- `GET /api/agents` - List all agents
-- `GET /api/agents/:id` - Get agent details
-- `POST /api/agents` - Create agent
-- `PUT /api/agents/:id` - Update agent
-- `DELETE /api/agents/:id` - Delete agent
-
-### Benchmark Runs
-
-- `GET /api/runs` - List all runs
-- `GET /api/runs/:id` - Get run details
-- `POST /api/runs` - Create and start run
-- `GET /api/runs/:id/matrix` - Get results matrix
-- `GET /api/runs/:id/status` - Get run status
-- `DELETE /api/runs/:id` - Delete run
-
-## Database Schema
-
-See `backend/prisma/schema.prisma` for the complete schema.
-
-Key models:
-- **TaskSuite**: Collection of related tasks
-- **TaskItem**: Individual benchmark task
-- **AgentProfile**: Agent configuration (model + prompt + tools)
-- **BenchmarkRun**: A benchmark execution
-- **BenchmarkRunAgent**: Junction table with aggregated metrics
-- **BenchmarkResult**: Individual result for agent × task
-
-## Development
-
-### Database Management
+Run tests for all packages:
 
 ```bash
-cd backend
-
-# View database in Prisma Studio
-npm run db:studio
-
-# Create new migration
-npm run db:migrate
-
-# Reset database
-npx prisma migrate reset
+npm test
 ```
 
-### Adding New Scoring Methods
+Run tests for specific package:
 
-Edit `backend/src/services/scoring.service.ts`:
+```bash
+# Backend tests
+cd backend && npm test
 
-```typescript
-private customScore(output: any, expected: any, scoringConfig: any): Record<string, any> {
-  // Add your custom scoring logic here
-  return {
-    myCustomScore: calculateScore(output, expected)
-  };
-}
+# Frontend tests
+cd frontend && npm test
 ```
 
-### Adding New LLM Providers
+Run tests in watch mode:
 
-Edit `backend/src/services/llm.service.ts`:
-
-```typescript
-async execute(provider: LLMProvider, model: string, systemPrompt: string, userInput: string) {
-  if (provider === 'my-provider') {
-    return await this.executeMyProvider(model, systemPrompt, userInput);
-  }
-  // ...
-}
+```bash
+cd backend && npm run test:watch
 ```
+
+Current test coverage:
+- ✅ Type validation (Zod schemas)
+- ✅ Scoring service logic
+- ✅ API client methods
 
 ## Troubleshooting
 
 ### Database Connection Issues
 
-Ensure PostgreSQL is running and credentials are correct in `.env`:
+Ensure PostgreSQL is running:
 
 ```bash
-# Check PostgreSQL status
-systemctl status postgresql  # Linux
-brew services list           # macOS
+# Check Docker containers
+docker compose ps
+
+# Check local PostgreSQL
+pg_isready
 ```
+
+Verify `DATABASE_URL` in `.env` is correct.
 
 ### API Key Issues
 
-Verify API keys are set correctly:
+Verify your API keys are set:
 
 ```bash
-cd backend
-node -e "console.log(process.env.OPENAI_API_KEY)"
+# In .env file
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+Test keys are valid by running a simple benchmark.
 
 ### Port Conflicts
 
-If ports 3000 or 3001 are in use, change them:
+If ports 3000 or 3001 are in use:
 
 ```bash
-# Backend - edit backend/.env
+# Change backend port in .env
 PORT=3002
 
-# Frontend - run with custom port
-cd frontend
-PORT=3001 npm run dev
+# Change frontend port when starting
+cd frontend && PORT=3001 npm run dev
 ```
 
-## Production Deployment
-
-### Backend
+### Docker Issues
 
 ```bash
-cd backend
-npm run build
-npm start
+# Rebuild containers
+docker compose down
+docker compose up --build
+
+# View logs
+docker compose logs -f backend
 ```
 
-Set environment variables for production:
-- `DATABASE_URL`
-- `OPENAI_API_KEY`
-- `ANTHROPIC_API_KEY`
-- `PORT`
-- `CORS_ORIGIN`
+## Future Extensions
 
-### Frontend
+### Planned Features
+- **Streaming results**: Real-time updates as benchmarks execute
+- **Parallel execution**: Run multiple tasks simultaneously for speed
+- **Cost tracking**: Calculate and display API costs per run
+- **Export results**: Download results as CSV/JSON
+- **Historical trends**: Visualize performance over time
+- **Custom scoring plugins**: User-defined scoring methods
+- **Tool support**: Test agents with function calling/tools
+- **Batch operations**: Upload multiple tasks via CSV
+- **Comparison reports**: Generate formatted comparison documents
 
-```bash
-cd frontend
-npm run build
-npm start
+### Additional LLM Providers
+- Google (Gemini)
+- Cohere
+- Mistral AI
+- Local models (Ollama integration)
+
+### Advanced Features
+- A/B testing framework
+- Rate limiting and queuing
+- User authentication and multi-tenancy
+- Webhook notifications for run completion
+- Slack/Discord integrations
+
+## Development
+
+### Project Structure
+
+```
+agent-benchmark-lab/
+├── backend/
+│   ├── prisma/
+│   │   ├── schema.prisma      # Database schema
+│   │   └── seed.ts            # Demo data
+│   ├── src/
+│   │   ├── routes/            # API endpoints
+│   │   ├── services/          # Business logic
+│   │   │   ├── llm.service.ts
+│   │   │   ├── runner.service.ts
+│   │   │   └── scoring.service.ts
+│   │   ├── types/             # TypeScript types
+│   │   ├── db.ts              # Prisma client
+│   │   └── index.ts           # Fastify app
+│   └── vitest.config.ts
+├── frontend/
+│   ├── src/
+│   │   ├── app/               # Next.js pages
+│   │   │   ├── suites/
+│   │   │   ├── agents/
+│   │   │   └── runs/
+│   │   └── lib/
+│   │       └── api.ts         # API client
+│   └── vitest.config.ts
+├── docker-compose.yml
+└── package.json               # Root workspace config
 ```
 
-Set environment variable:
-- `NEXT_PUBLIC_API_URL`
+### Adding a New LLM Provider
 
-### Docker (Optional)
+1. Update `LLMProvider` enum in `backend/src/types/index.ts`
+2. Add provider logic in `backend/src/services/llm.service.ts`
+3. Update agent creation form in frontend
 
-Create `Dockerfile` in backend and frontend directories, or use a `docker-compose.yml` to orchestrate services.
+### Adding a New Scoring Method
+
+1. Add logic in `backend/src/services/scoring.service.ts`
+2. Update `ScoreResult` type
+3. Update results display in frontend
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Make your changes and add tests
+4. Ensure tests pass: `npm test`
+5. Ensure types are valid: `npm run lint`
+6. Commit your changes: `git commit -m "Add my feature"`
+7. Push to your fork: `git push origin feature/my-feature`
+8. Open a Pull Request
 
 ## License
 
 MIT
 
-## Support
+---
 
-For issues and questions, please open an issue on GitHub.
-
-## Roadmap
-
-- [ ] Export results to CSV/JSON
-- [ ] Historical trend visualization
-- [ ] Custom scoring plugins
-- [ ] Parallel execution optimization
-- [ ] Real-time streaming results
-- [ ] Support for additional LLM providers (Cohere, etc.)
-- [ ] Cost tracking and analysis
-- [ ] A/B testing framework
-- [ ] API rate limiting and queuing
+Built with ❤️ for the AI agent community
