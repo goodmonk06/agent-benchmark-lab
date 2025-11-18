@@ -1,0 +1,131 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Task suite represents a collection of related benchmark tasks
+model TaskSuite {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  domain      String     // code, writing, planning, qa, etc.
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  tasks       TaskItem[]
+  runs        BenchmarkRun[]
+
+  @@map("task_suites")
+}
+
+// Individual task within a suite
+model TaskItem {
+  id                String   @id @default(cuid())
+  suiteId           String
+  suite             TaskSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+
+  name              String?
+  description       String?
+  inputJson         Json     // The input/prompt for the task
+  expectedJson      Json?    // Optional expected output for scoring
+  scoringConfigJson Json?    // Configuration for how to score this task
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  results           BenchmarkResult[]
+
+  @@map("task_items")
+  @@index([suiteId])
+}
+
+// Agent configuration/profile
+model AgentProfile {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  model        String   // e.g., "gpt-4", "claude-3-opus-20240229"
+  provider     String   // "openai" or "anthropic"
+  systemPrompt String   @db.Text
+  toolsJson    Json     // JSON array of tool names/configs
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  runAgents    BenchmarkRunAgent[]
+
+  @@map("agent_profiles")
+}
+
+// A benchmark run (can test multiple agents)
+model BenchmarkRun {
+  id        String   @id @default(cuid())
+  suiteId   String
+  suite     TaskSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+
+  name      String?
+  status    String   @default("pending") // pending, running, completed, failed
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agents    BenchmarkRunAgent[]
+
+  @@map("benchmark_runs")
+  @@index([suiteId])
+}
+
+// Junction table for run × agent with aggregated metrics
+model BenchmarkRunAgent {
+  id             String   @id @default(cuid())
+  runId          String
+  run            BenchmarkRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  agentProfileId String
+  agentProfile   AgentProfile @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
+
+  status         String   @default("pending") // pending, running, completed, failed
+  metricsJson    Json?    // Aggregated metrics for this agent in this run
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  results        BenchmarkResult[]
+
+  @@map("benchmark_run_agents")
+  @@index([runId])
+  @@index([agentProfileId])
+  @@unique([runId, agentProfileId])
+}
+
+// Individual result for agent × task
+model BenchmarkResult {
+  id           String   @id @default(cuid())
+  runAgentId   String
+  runAgent     BenchmarkRunAgent @relation(fields: [runAgentId], references: [id], onDelete: Cascade)
+
+  taskItemId   String
+  taskItem     TaskItem @relation(fields: [taskItemId], references: [id], onDelete: Cascade)
+
+  outputJson   Json?    // The agent's output
+  scoreJson    Json?    // Scores/metrics for this result
+  errorMessage String?  @db.Text
+
+  durationMs   Int?     // Time taken to complete
+  tokensUsed   Int?     // Tokens consumed (if available)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("benchmark_results")
+  @@index([runAgentId])
+  @@index([taskItemId])
+  @@unique([runAgentId, taskItemId])
+}
